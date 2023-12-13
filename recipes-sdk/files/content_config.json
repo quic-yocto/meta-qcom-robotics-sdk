@@ -1,0 +1,46 @@
+{
+    "function_sdks": [
+        {
+            "name": "qti-robotics",
+            "description":"QIRF SDK OSS part",
+            "version": "latest",
+            "hashsum": "latest",
+            "path": "",
+            "download": {
+                "downloadable": false,
+                "suite_id": 0,
+                "release_id": 0
+            },
+            "pickup_files": [
+                {
+                    "to": "/",
+                    "from": [
+                        "qti-robotics/*"
+                    ],
+                    "tag": "all files"
+                }
+            ]
+        },
+        {
+            "name": "qti-qim",
+            "description":"QIM SDK",
+            "version": "latest",
+            "hashsum": "latest",
+            "path": "",
+            "download": {
+                "downloadable": false,
+                "suite_id": 0,
+                "release_id": 0
+            },
+            "pickup_files": [
+                {
+                    "to": "/",
+                    "from": [
+                        "qti-qim/*"
+                    ],
+                    "tag": "all files"
+                }
+            ]
+        }
+    ]
+}

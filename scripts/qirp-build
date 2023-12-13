@@ -1,0 +1,183 @@
+#!/bin/bash
+#
+#Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+#SPDX-License-Identifier: BSD-3-Clause-Clear
+#
+
+IMAGE_NAME="qcom-robotics-console-image"
+QIRP_NAME="qirp-sdk"
+SAMPLE_DIR="sample-code"
+DEPLOY_DIR="tmp-glibc/deploy/artifacts"
+FUNCTION_SDK="qirf-sdk"
+
+# API check is disabled by default
+APICHECK_ENABLED=0
+package_list=()
+
+ERROR(){
+    local message="$1"
+    echo -e "\e[91mError: $message\e[0m"
+}
+
+USAGE() {
+    echo
+    echo "Usage: $0 [image name] [--noapicheck] [-h]"
+    echo "    --noapicheck             Disable API check"
+    echo "    -h or --help             Display help message"
+    echo
+    exit 1
+}
+
+api_check() {
+    # ros environment Host setup
+    source /opt/ros/foxy/setup.sh
+
+    for dir in "${package_list[@]}"; do
+        cd $dir || exit 1
+        # BUILD_TESTS_ONLY=ON, build test case only
+        colcon build --cmake-args -DBUILD_TESTS_ONLY=ON
+        if [ $? -ne 0 ]; then
+            echo "Error building test code in $dir. Exiting."
+            exit 1
+        fi
+        colcon test --event-handler=console_direct+
+        if [ $? -ne 0 ]; then
+            echo "Error testing in $dir. Exiting."
+            exit 1
+        fi
+        # clean the build cache
+        rm -rf ./install ./log ./build && cd ..
+    done
+}
+
+compilation_check() {
+    echo "Extracting Toolchain..."
+    ./setup.sh
+    if [ $? -ne 0 ]; then
+        echo "Error Setting up Toolchain. Exiting."
+        exit 1
+    fi
+
+    for dir in "${package_list[@]}"; do
+        cd $dir || exit 1
+        colcon build
+        if [ $? -ne 0 ]; then
+            echo "Error building project in $dir. Exiting."
+            exit 1
+        fi
+        # clean the build cache
+        rm -rf ./install ./log ./build && cd ..
+    done
+}
+
+start_sanity_check() {
+    echo "Unpacking QIRP SDK..."
+    if ! ls $(pwd)/$DEPLOY_DIR/$QIRP_NAME/*.tar.gz &> /dev/null; then
+        echo "    There are no QIRP SDK in $(pwd)/$DEPLOY_DIR/"
+        exit 1
+    else
+        cd $(pwd)/$DEPLOY_DIR
+        rm -rf ./$QIRP_NAME && tar -zvxf $QIRP_NAME*.tar.gz && cd ./$QIRP_NAME || exit 1
+    fi
+
+    echo "Compile Samples Test, and check APIs..."
+    for package_xml in $(find ./$SAMPLE_DIR -name "package.xml"); do
+        package_dir=$(dirname $package_xml)
+        package_list+=("$package_dir")
+    done
+
+    # Test case just run in X86 to test api compatibility,
+    # so it should be compiledin X86 environment
+    # api_check just only compiles test case
+    api_check
+
+    # Whole project will be compiled in SDK toolchain
+    compilation_check
+}
+
+check_dependencies() {
+    echo "Checking HOST Dependencies..."
+
+    if ! dpkg -l | grep ros-foxy-desktop &> /dev/null; then
+        echo "    ros-foxy-desktop is not installed. Please install"
+        exit 1
+    else
+        echo "    ros-foxy-desktop is installed"
+    fi
+
+    if ! dpkg -l | grep python3-colcon-common-extensions &> /dev/null; then
+        echo "    python3-colcon-common-extensions is not installed. Please install"
+        exit 1
+    else
+        echo "    python3-colcon-common-extensions is installed"
+    fi
+
+    if ! dpkg -l | grep libgtest-dev &> /dev/null; then
+        echo "    libgtest-dev is not installed. Please install"
+        exit 1
+    else
+        echo "    libgtest-dev is installed"
+    fi
+}
+
+compile_qirp(){
+    # Generate image and function sdk
+    bitbake $IMAGE_NAME
+    bitbake $FUNCTION_SDK
+
+    # Generate standard SDK to provide toolchain...
+    if ls $(pwd)/tmp-glibc/deploy/sdk/*toolchain*.sh &> /dev/null; then
+        echo "Standard SDK has been ready, skip generation"
+        echo
+    else
+        echo "Generating standard SDK to provide toolchain with:"
+        echo "    bitbake $IMAGE_NAME -c populate_sdk"
+        echo
+        bitbake $IMAGE_NAME -c populate_sdk || exit 1
+    fi
+
+    # Generate QIRP SDK...
+    echo "Generating QIRP SDK with:"
+    echo "    bitbake $QIRP_NAME"
+    echo
+    bitbake $QIRP_NAME -c do_cleanall
+    bitbake $QIRP_NAME || exit 1
+
+    # Start APIs Check
+    if [ $APICHECK_ENABLED -eq 1 ]; then
+        echo "Starting API Check..."
+        check_dependencies
+        start_apicheck
+    else
+        echo "Skip API Check..."
+    fi
+}
+
+# Parse arguments...
+if [ $# -gt 0 ]; then
+    case "$1" in
+        "-h")
+            USAGE
+            ;;
+        "--help")
+            USAGE
+            ;;
+        *)
+            IMAGE_NAME=$1
+            ;;
+    esac
+
+    if [ $# -eq 2 ]; then
+        case "$2" in
+            "--noapicheck")
+                APICHECK_ENABLED=0
+                ;;
+        esac
+    fi
+else
+    USAGE
+fi
+
+# Start compile...
+compile_qirp
+echo "Compile Successfully!"
