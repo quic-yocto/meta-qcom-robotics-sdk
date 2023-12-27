@@ -13,7 +13,7 @@
             },
             "pickup_files": [
                 {
-                    "to": "/",
+                    "to": "/opt/qcom/qirp-sdk/",
                     "from": [
                         "qti-robotics/*"
                     ],
@@ -34,7 +34,7 @@
             },
             "pickup_files": [
                 {
-                    "to": "/",
+                    "to": "/opt/qcom/qirp-sdk/",
                     "from": [
                         "qti-qim/*"
                     ],

@@ -6,7 +6,7 @@
 SDK_NAME="QIRP_SDK"
 
 FOUND_PKGS=""
-PKG_LIST_DIR="/data/"
+PKG_LIST_DIR="/opt/qcom/qirp-sdk/data/"
 PKG_LIST_FILE="$PKG_LIST_DIR/$SDK_NAME.list"
 
 ALL_PKGS="\

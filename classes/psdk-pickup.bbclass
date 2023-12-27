@@ -96,7 +96,7 @@ python do_install () {
     pickup_files(configfile_oss, sysrootdir, outputdir, fileslist)
 
     # move files_list to data dir
-    fileslist_path = outputdir + "/data/"
+    fileslist_path = outputdir + "/opt/qcom/qirp-sdk/data/"
     mv_cmd = "mkdir -p %s && mv %s %s" %(fileslist_path, outputdir + fileslist, fileslist_path)
     bb.note(mv_cmd)
     subprocess.call(mv_cmd,shell=True)
