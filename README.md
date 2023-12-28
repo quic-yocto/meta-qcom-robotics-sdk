@@ -135,9 +135,11 @@ To set up the environment for application development, follow these steps:
 
 1. Decompress the QIRP SDK.
 
-Change to the artifacts directory.
+Exit docker and change to the artifacts directory.
 
 ``` shell
+exit
+
 cd <codebase>/build-qcom-robotics-ros2-humble/tmp-glibc/deploy/artifacts
 ```
 
@@ -172,9 +174,8 @@ Ensure that the device is connected to the host machine.
 To deploy the QIRP artifacts, push the QIRP files to the device using the following commands.
 
 ``` shell
-cd qirp-sdk
 adb devices
-adb push qirp-sdk /runtime/qirp-sdk /opt/
+adb push ./runtime/qirp-sdk /opt/runtime/
 adb shell "chmod +x /opt/runtime/qirp-sdk/*.sh"
 adb shell "/opt/runtime/qirp-sdk/install.sh"
 ```
@@ -211,3 +212,4 @@ adb shell
 ```
 
 NOTE: For the further development, please refer to QIRP SDK documents, to be released later.
+
