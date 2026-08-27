@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 TOOLCHAIN_PATH = "${DEPLOY_DIR}/sdk"
 
-SDK_VERSION = "2.6.1"
+SDK_VERSION = "2.6.2"
 
 do_generate_qirp_sdk(){
     # orgnanize toolchain
