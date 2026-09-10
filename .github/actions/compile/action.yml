@@ -53,14 +53,14 @@ runs:
     - name: Setup build variables and sstate-cache
       shell: bash
       run: |
-        # use a monthly sstate cache folder
         echo "DL_DIR=${{inputs.cache_dir}}/downloads" >> $GITHUB_ENV
 
         if [ "${{ inputs.use_sstate }}" = "false" ]; then
           echo "Not using SSTATE cache (full rebuild)."
         else
           echo "Using SSTATE cache..."
-          echo "SSTATE_DIR=${{inputs.cache_dir}}/sstate-cache-$(date '+%Y-%m')" >> $GITHUB_ENV
+          # use a single shared sstate cache folder, cleaned up by mtime
+          echo "SSTATE_DIR=${{inputs.cache_dir}}/sstate-cache" >> $GITHUB_ENV
         fi
 
         echo "KAS_WORK_DIR=$PWD/../kas" >> $GITHUB_ENV
