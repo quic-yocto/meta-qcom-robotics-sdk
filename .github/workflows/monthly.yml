@@ -13,7 +13,7 @@ env:
 jobs:
   sstate-cache-cleanup:
     if: github.repository_owner == 'qualcomm-linux'
-    runs-on: [self-hosted, qcom-u2404, amd64]
+    runs-on: [self-hosted, qcom-sm-u2404, sm-amd64]
     timeout-minutes: 720
     steps:
       - name: Expire unused files from the shared sstate-cache dir
