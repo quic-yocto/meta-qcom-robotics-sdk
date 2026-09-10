@@ -65,7 +65,7 @@ runs:
 
         echo "KAS_WORK_DIR=$PWD/../kas" >> $GITHUB_ENV
         echo "SSTATE_DIR PATH: "
-        ls -al /efs/qli/meta-qcom-robotics-sdk
+        ls -al "${{inputs.cache_dir}}"
 
     - name: Dump kas-build yaml
       shell: bash

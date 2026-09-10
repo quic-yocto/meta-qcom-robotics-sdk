@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CACHE_DIR: /efs/qli/meta-qcom-robotics-sdk
+  CACHE_DIR: /efsx/qli/meta-qcom-robotics-sdk
   KAS_CLONE_DEPTH: 1
 
 jobs:
