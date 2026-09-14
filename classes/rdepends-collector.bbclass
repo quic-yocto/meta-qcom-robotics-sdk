@@ -4,7 +4,7 @@
 # rdepends-collector.bbclass
 # Purpose:
 #   Collects direct RDEPENDS from a packagegroup recipe and writes the result
-#   into PACKAGEGROUP_LIST_DIR as a plain package list file.
+#   into ROBOTICS_PACKAGEGROUP_LIST_DIR as a plain package list file.
 #
 # Main responsibilities:
 #   1. Add a do_collect_rdepends task after package output is generated.
@@ -17,68 +17,88 @@
 #   The generated *.list files are consumed by psdk-image.bbclass when it
 #   collects runtime packages for the final QIRP SDK archive.
 
-PACKAGEGROUP_LIST_DIR = "${DEPLOY_DIR}/packagegroup-lists"
+# register sstate tasks
+SSTATETASKS += "do_collect_rdepends"
+
+# add private staging
+ROBOTICS_PACKAGEGROUP_LIST_STAGING_DIR = "${WORKDIR}/packagegroup-lists-staging"
+
+# task write to private staging dir
+do_collect_rdepends[sstate-inputdirs] = "${ROBOTICS_PACKAGEGROUP_LIST_STAGING_DIR}"
+# recover from sstate dir
+do_collect_rdepends[sstate-outputdirs] = "${ROBOTICS_PACKAGEGROUP_LIST_DIR}"
+# ensure input/output path exist
+do_collect_rdepends[dirs] = "${ROBOTICS_PACKAGEGROUP_LIST_STAGING_DIR} ${ROBOTICS_PACKAGEGROUP_LIST_DIR}"
+
+# clean staging path before run task
+do_collect_rdepends[cleandirs] = "${ROBOTICS_PACKAGEGROUP_LIST_STAGING_DIR}"
+# sperate different MACHINE_ARCH sstate cache
+do_collect_rdepends[stamp-extra-info] = "${MACHINE_ARCH}"
 
 # Add task: collect RDEPENDS after packagegroup build
 addtask do_collect_rdepends after do_package_write before do_build
-do_collect_rdepends[vardeps] = "RDEPENDS"
+
+# Add a variable for the mandatory SDK package and include it in vardeps
+ROBOTICS_SDK_PACKAGE ?= "qirp-sdk"
+do_collect_rdepends[vardeps] = "RDEPENDS:${PN} ROBOTICS_SDK_PACKAGE"
+
+# setscene function required by BitBake to recognise do_collect_rdepends as a
+# sstate-restorable task. Without this, runqueue.py skips the task from the
+# setscene candidate list (it checks for tid + "_setscene" in taskentries), so
+# the eSDK inner bitbake never attempts sstate restore and instead tries to run
+# the task directly, which is then blocked by BB_SETSCENE_ENFORCE_IGNORE_TASKS.
+python do_collect_rdepends_setscene() {
+    sstate_setscene(d)
+}
+addtask do_collect_rdepends_setscene
 
 # Function: do_collect_rdepends
 # Collect direct runtime dependencies from the current packagegroup and write
-# them into ${PACKAGEGROUP_LIST_DIR}/${PN}.list for later SDK packaging use.
+# them into ${ROBOTICS_PACKAGEGROUP_LIST_DIR}/${PN}.list for later SDK packaging use.
 python do_collect_rdepends() {
     """
     Collect packagegroup RDEPENDS and write to file
     Only collects direct RDEPENDS, not dependencies of dependencies
     """
     import os
-    
     pn = d.getVar("PN")
-    
+
     bb.note("Collecting RDEPENDS for packagegroup: {}".format(pn))
-    
+
     # Get RDEPENDS
     rdepends_var = 'RDEPENDS:{}'.format(pn)
     rdepends = d.getVar(rdepends_var) or ""
-    
     if not rdepends:
         bb.warn("RDEPENDS for {} is empty (will be added later)".format(pn))
-        # Create file even if empty, so content can be added later
         rdepends = ""
-    
-    # Create directory
-    list_dir = d.getVar("PACKAGEGROUP_LIST_DIR")
+
+    # Write into the private staging dir so sstate can package it correctly.
+    # sstate copies staging -> ROBOTICS_PACKAGEGROUP_LIST_DIR on restore.
+    list_dir = d.getVar("ROBOTICS_PACKAGEGROUP_LIST_STAGING_DIR")
     os.makedirs(list_dir, exist_ok=True)
-    
-    # Write to file
+
     list_file = os.path.join(list_dir, "{}.list".format(pn))
-    
-    # Remove old list file before creating new one
-    # This ensures we start fresh each time
-    if os.path.exists(list_file):
-        bb.note("Removing old list file: {}".format(list_file))
-        os.remove(list_file)
-    
+
     with open(list_file, 'w') as f:
-        # One package per line, remove whitespace
         for pkg in rdepends.split():
             pkg_clean = pkg.strip()
             if pkg_clean:
                 f.write("{}\n".format(pkg_clean))
-        
-        # The qirp-sdk, as a separate main package, needs to be included in all images. Please refer to qirp-sdk.bb
-        f.write("{}\n".format("qirp-sdk"))
+        # qirp-sdk is a standalone package that must be present in all images.
+        sdk_package = d.getVar("ROBOTICS_SDK_PACKAGE") or "qirp-sdk"
+        f.write("{}\n".format(sdk_package))
 
     package_count = len(rdepends.split())
     bb.note("Wrote {} packages to {}".format(package_count, list_file))
 }
 
 # Function: do_clean_rdepends
-# Remove the generated dependency list directory during cleanall so stale
-# package lists are not reused by later builds.
-# Cleanup task
+# Remove only this recipe's list file during cleanall so stale package lists
+# are not reused by later builds. Note: do_cleansstate already removes the file
+# via the sstate manifest, so this task only handles the non-sstate path
+# (e.g. when the file was written directly without going through sstate).
 addtask do_clean_rdepends before do_cleanall
 
 do_clean_rdepends() {
-    rm -rf ${PACKAGEGROUP_LIST_DIR}
+    rm -f ${ROBOTICS_PACKAGEGROUP_LIST_DIR}/${PN}.list
 }

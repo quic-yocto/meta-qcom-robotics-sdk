@@ -138,20 +138,17 @@ process_runtime() {
         fi
     done
 
-    # Determine which packagegroup list files to read
-    PACKAGEGROUP_LIST_DIR="${DEPLOY_DIR}/packagegroup-lists"
-    
     if echo "${PN}" | grep -q proprietary; then
         # Proprietary image: three packagegroups
         LIST_FILES=" \
-            ${PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-opensource.list \
-            ${PACKAGEGROUP_LIST_DIR}/packagegroup-oss-with-prop-deps.list \
-            ${PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-proprietary.list \
+            ${ROBOTICS_PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-opensource.list \
+            ${ROBOTICS_PACKAGEGROUP_LIST_DIR}/packagegroup-oss-with-prop-deps.list \
+            ${ROBOTICS_PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-proprietary.list \
         "
         bbnote "Processing proprietary image with 3 packagegroup lists"
     else
         # Open-source image: one packagegroup
-        LIST_FILES="${PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-opensource.list"
+        LIST_FILES="${ROBOTICS_PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-opensource.list"
         bbnote "Processing open-source image with 1 packagegroup list"
     fi
     
@@ -287,9 +284,15 @@ python () {
             pkg_groups = ["packagegroup-robotics-opensource"]
         
         # Add dependencies
+        
         for pkg_group in pkg_groups:
-            d.appendVarFlag('do_generate_qirp_sdk', 'depends', 
-                           ' {}:do_collect_rdepends'.format(pkg_group))
+            for task in ["do_generate_qirp_sdk", "do_populate_sdk", "do_populate_sdk_ext"]:
+                d.appendVarFlag(task, "depends",
+                                " {}:do_collect_rdepends".format(pkg_group))
+
+        # for pkg_group in pkg_groups:
+        #     d.appendVarFlag('do_generate_qirp_sdk', 'depends', 
+        #                    ' {}:do_collect_rdepends'.format(pkg_group))
         
         bb.note("Added dependencies for {}: {}".format(pn, ", ".join(pkg_groups)))
         

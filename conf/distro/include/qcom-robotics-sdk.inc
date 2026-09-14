@@ -34,19 +34,15 @@ ROS_SDK_TARGET_PACKAGES:append = "${@bb.utils.contains('DISTRO_FEATURES', 'ros2-
     python-cmake-module \
 ', '', d)}"
 
-
 TOOLCHAIN_TARGET_TASK:remove = "qirp-sdk"
 
 # Add default packages from meta-ros ros-sdk.inc
-TOOLCHAIN_HOST_TASK:append = " ${ROS_SDK_HOST_PACKAGES}"
+TOOLCHAIN_HOST_TASK:append = "${@(' ' + (d.getVar('ROS_SDK_HOST_PACKAGES') or '')) if d.getVar('PN') != 'buildtools-tarball' else ''}"
 
-TOOLCHAIN_TARGET_TASK:append = " \
-    ${ROS_SDK_TARGET_PACKAGES} \
-    sed \
-    fmt-staticdev \
-    octomap-staticdev \
-    osqp-vendor-staticdev \
-"
+TOOLCHAIN_TARGET_TASK:append = "${@(' ' + (d.getVar('ROS_SDK_TARGET_PACKAGES') or '') + ' sed fmt-staticdev octomap-staticdev osqp-vendor-staticdev') if d.getVar('PN') != 'buildtools-tarball' else ''}"
+
+# Add do_collect_rdepends task to target dependency chain to avoid eSDK inner build error
+SDK_RECRDEP_TASKS:append = " do_collect_rdepends"
 
 # protobuf-camx recipe was removed from meta-qcom; replace with nativesdk-protobuf-compiler
 TOOLCHAIN_HOST_TASK:remove = "nativesdk-protobuf-camx-compiler"
