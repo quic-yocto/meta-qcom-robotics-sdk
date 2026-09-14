@@ -1,0 +1,211 @@
+From 3779990788cbe5427ad46a26e5f229cc4f4877cf Mon Sep 17 00:00:00 2001
+From: Na Song <nasong@qti.qualcomm.com>
+Date: Thu, 10 Sep 2026 15:36:40 +0800
+Subject: [PATCH] fix: stop leaking DSP mappings when a signal arrives
+ mid-inference
+
+The HTP backend reaches the DSP through a blocking fastrpc ioctl. When
+SIGINT is delivered to the thread sitting in that ioctl it returns EINTR,
+QNN reports "DspTransport call failed, error 0x0000000f" and the DSP side
+session is left in an error state. Every unmap and contextFree afterwards
+then fails, and the mappings survive process exit:
+
+  <E> fastrpc memory failed to unmap for fd: 43 with length: 58720256
+      failed with error: 0x14
+  <E> Failed to free context with err 1003
+
+That is ~60 MiB per launch cycle for a Depth-Anything-V2 sized model
+(56 MiB weights plus input, output and metadata buffers). After 65
+start/stop cycles no PD has room left and the model can no longer be
+loaded at all:
+
+  <E> Failed to find available PD for contextId 1 on deviceId 0 coreId 0
+      with context size estimate 183453952
+
+Only a reboot recovers the board. The process still reports a clean exit
+throughout, so the leak is silent.
+
+- Block SIGINT and SIGTERM for the duration of inference_execute() via an
+  RAII guard. The signals stay pending, the ioctl is not interrupted and
+  the DSP session stays healthy, at the cost of one inference period of
+  extra shutdown latency.
+- Serialize inference_execute() against ~QnnInference() with a mutex, so
+  the context is never freed while the DSP is still executing a graph,
+  and reject requests that arrive once teardown has started.
+- Give QrbRosInferenceNode a destructor that drops the subscription
+  before the inference manager, so no callback can be dispatched into a
+  half-destroyed manager.
+
+A downstream node cannot work around this: ros2 launch forwards SIGINT to
+every process in the same instant, so draining in-flight requests on the
+client side has no way to delay this node's teardown.
+
+Upstream-Status: Pending
+
+Signed-off-by: Na Song <nasong@qti.qualcomm.com>
+---
+ .../include/qnn_inference/qnn_inference.hpp   |  7 ++
+ .../src/qnn_inference/qnn_inference.cpp       | 66 +++++++++++++++++++
+ .../qrb_ros_inference_node.hpp                |  2 +-
+ .../src/qrb_ros_inference_node.cpp            | 14 ++++
+ 4 files changed, 88 insertions(+), 1 deletion(-)
+
+diff --git a/qrb_inference_manager/include/qnn_inference/qnn_inference.hpp b/qrb_inference_manager/include/qnn_inference/qnn_inference.hpp
+index 506895c..02e72bc 100644
+--- a/qrb_inference_manager/include/qnn_inference/qnn_inference.hpp
++++ b/qrb_inference_manager/include/qnn_inference/qnn_inference.hpp
+@@ -4,6 +4,8 @@
+ #ifndef QRB_INFERENCE_MANAGER_QNN_INFERENCE_HPP_
+ #define QRB_INFERENCE_MANAGER_QNN_INFERENCE_HPP_
+
++#include <mutex>
++
+ #include "qnn_inference/qnn_inference_impl.hpp"
+ #include "qrb_inference.hpp"
+
+@@ -37,6 +39,11 @@ private:
+   std::vector<OutputTensor> output_tensor_;
+   std::unique_ptr<QnnInterface> qnn_interface_{ nullptr };
+
++  // Serializes inference_execute() against the destructor, so that the QNN
++  // context is never freed while the DSP is still executing a graph.
++  std::mutex inference_mutex_;
++  bool tearing_down_ = false;
++
+   StatusCode initialize_backend();
+   StatusCode create_device();
+   StatusCode create_context();
+diff --git a/qrb_inference_manager/src/qnn_inference/qnn_inference.cpp b/qrb_inference_manager/src/qnn_inference/qnn_inference.cpp
+index a5b9e26..088448e 100644
+--- a/qrb_inference_manager/src/qnn_inference/qnn_inference.cpp
++++ b/qrb_inference_manager/src/qnn_inference/qnn_inference.cpp
+@@ -3,9 +3,61 @@
+
+ #include "qnn_inference/qnn_inference.hpp"
+
++#include <pthread.h>
++
++#include <csignal>
++#include <mutex>
++
+ namespace qrb::inference_mgr
+ {
+
++namespace
++{
++
++/**
++ * \brief blocks SIGINT and SIGTERM for the lifetime of the object
++ *
++ * The HTP backend reaches the DSP through a blocking fastrpc ioctl. A signal
++ * delivered to the thread sitting in that ioctl makes it return EINTR, QNN
++ * reports "DspTransport call failed" and the DSP side session is left in an
++ * error state. Every later contextFree() and fastrpc unmap then fails with
++ * err 1003 / 0x14, and the mappings - about 60 MiB for a Depth-Anything-V2
++ * sized model - are never reclaimed, not even once the process has exited.
++ * After enough launch cycles no PD has room left and the model cannot be
++ * loaded at all.
++ *
++ * Keeping the signals pending until the inference has returned costs one
++ * inference period of extra shutdown latency and avoids all of that.
++ */
++class ScopedSignalBlock
++{
++public:
++  ScopedSignalBlock()
++  {
++    sigset_t block_set;
++    sigemptyset(&block_set);
++    sigaddset(&block_set, SIGINT);
++    sigaddset(&block_set, SIGTERM);
++    blocked_ = (0 == ::pthread_sigmask(SIG_BLOCK, &block_set, &old_set_));
++  }
++
++  ~ScopedSignalBlock()
++  {
++    if (blocked_) {
++      ::pthread_sigmask(SIG_SETMASK, &old_set_, nullptr);
++    }
++  }
++
++  ScopedSignalBlock(const ScopedSignalBlock &) = delete;
++  ScopedSignalBlock & operator=(const ScopedSignalBlock &) = delete;
++
++private:
++  sigset_t old_set_;
++  bool blocked_ = false;
++};
++
++}  // namespace
++
+ QnnInference::QnnInference(const std::string & model_path, const std::string & backend_option)
+   : model_path_(model_path), backend_option_(backend_option)
+ {
+@@ -25,6 +77,11 @@ QnnInference::QnnInference(const std::string & model_path, const std::string & b
+
+ QnnInference::~QnnInference()
+ {
++  // Blocks until an in-flight inference_execute() has returned, so that we never
++  // free the context or unmap the buffers while the DSP is still working on them.
++  std::lock_guard<std::mutex> lock(this->inference_mutex_);
++  this->tearing_down_ = true;
++
+   free_graphs_info();
+   free_context();
+   free_device();
+@@ -89,6 +146,15 @@ StatusCode QnnInference::inference_execute(const std::vector<uint8_t> & input_te
+     return StatusCode::FAILURE;
+   }
+
++  std::lock_guard<std::mutex> lock(this->inference_mutex_);
++  if (this->tearing_down_) {
++    QRB_WARNING("Inference requested while tearing down, dropping the request");
++    return StatusCode::FAILURE;
++  }
++
++  // Must outlive every fastrpc call below, see the ScopedSignalBlock comment.
++  ScopedSignalBlock signal_block;
++
+   for (uint32_t i = 0; i < graphs_count_; i++) {
+     const auto & graphs_info = (*(graphs_info_))[i];
+
+diff --git a/qrb_ros_nn_inference/include/qrb_ros_nn_inference/qrb_ros_inference_node.hpp b/qrb_ros_nn_inference/include/qrb_ros_nn_inference/qrb_ros_inference_node.hpp
+index c84b708..96c2e50 100644
+--- a/qrb_ros_nn_inference/include/qrb_ros_nn_inference/qrb_ros_inference_node.hpp
++++ b/qrb_ros_nn_inference/include/qrb_ros_nn_inference/qrb_ros_inference_node.hpp
+@@ -19,7 +19,7 @@ class QrbRosInferenceNode : public rclcpp::Node
+ {
+ public:
+   QrbRosInferenceNode(const rclcpp::NodeOptions & options);
+-  ~QrbRosInferenceNode() = default;
++  ~QrbRosInferenceNode();
+
+ private:
+   std::unique_ptr<qrb::inference_mgr::QrbInferenceManager> qrb_inference_mgr_{ nullptr };
+diff --git a/qrb_ros_nn_inference/src/qrb_ros_inference_node.cpp b/qrb_ros_nn_inference/src/qrb_ros_inference_node.cpp
+index a5b320b..5527640 100644
+--- a/qrb_ros_nn_inference/src/qrb_ros_inference_node.cpp
++++ b/qrb_ros_nn_inference/src/qrb_ros_inference_node.cpp
+@@ -32,6 +32,20 @@ QrbRosInferenceNode::QrbRosInferenceNode(const rclcpp::NodeOptions & options)
+   RCLCPP_INFO(this->get_logger(), "Inference init successfully!");
+ }
+
++/**
++ * \brief tear down in a defined order
++ *
++ * The subscription has to go first: once it is gone no callback can be
++ * dispatched into a half-destroyed inference manager. Destroying the manager
++ * then blocks until an in-flight inference has returned, so the QNN context is
++ * only freed while the DSP is idle.
++ */
++QrbRosInferenceNode::~QrbRosInferenceNode()
++{
++  this->sub_.reset();
++  this->qrb_inference_mgr_.reset();
++}
++
+ /**
+  * \brief callback func of subscriper, do model inference for every topic msg
+  * \param msg msg from subscribed topic
+--
+2.43.0
