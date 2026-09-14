@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/siemens/kas/master/kas/schema-kas.json
+
+header:
+  version: 14
+  includes:
+  - ci/mirror.yml
+
+local_conf_header:
+  ci: |
+    BB_SIGNATURE_HANDLER = "OEBasicHash"
+    FIRMWARE_COMPRESSION:qcom-armv8a = "zst"
+    # Workaround needed due https://bugzilla.yoctoproject.org/show_bug.cgi?id=16010
+    PACKAGE_CLASSES = "package_rpm"
