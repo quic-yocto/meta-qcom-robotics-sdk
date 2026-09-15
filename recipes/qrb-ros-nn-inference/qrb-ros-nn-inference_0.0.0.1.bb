@@ -57,7 +57,9 @@ DEPENDS += "${ROS_EXPORT_DEPENDS} ${ROS_BUILDTOOL_EXPORT_DEPENDS} ${ROS_TEST_DEP
 
 RDEPENDS:${PN} += "${ROS_EXEC_DEPENDS}"
 
-SRC_URI = "git://github.com/qualcomm-qrb-ros/qrb_ros_nn_inference.git;protocol=https;branch=stable/1.0.0;subdir=${BPN}-${PV}"
+SRC_URI = "git://github.com/qualcomm-qrb-ros/qrb_ros_nn_inference.git;protocol=https;branch=stable/1.0.0;subdir=${BPN}-${PV} \
+           file://0003-fix-stop-leaking-DSP-mappings-when-a-signal-arrives.patch;striplevel=1;patchdir=${UNPACKDIR}/${BPN}-${PV} \
+"
 SRCREV = "8fe767525171346fa00797c8eef1585746b299a9"
 S = "${UNPACKDIR}/${BPN}-${PV}/${ROS_CN}"
 
