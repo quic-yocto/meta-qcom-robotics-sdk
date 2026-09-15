@@ -10,11 +10,11 @@ repos:
     branch: main
   meta-qcom:
     url: https://github.com/qualcomm-linux/meta-qcom
-    commit: 7659417348e5fa189d31a2095313fa36bd7c0845
+    commit: bccc3bb2f6428a4a41d1102d12be6168a65e9201
   meta-qcom-distro:
     url: https://github.com/qualcomm-linux/meta-qcom-distro
     branch: main
-    commit: d9d5a832de3159c0f4a3a934bf4bbfb31d452e4a
+    commit: 2c0f42b3212043aa116b189b10cac6d2d1f4a02e
   oe-core:
     url: https://github.com/openembedded/openembedded-core
     layers:
@@ -23,7 +23,7 @@ repos:
       fix-BSD-license-missing:
         repo: meta-qcom-robotics-sdk
         path: patches/Initial-commit-of-license.patch
-    commit: 09df3e534c4f38a033c514d7567006ed35cc34df
+    commit: db81c1a42a0f552d9a8ec124f004ae2063d58c33
   meta-ros:
     url: https://github.com/ros/meta-ros.git
     branch: master
@@ -94,9 +94,11 @@ local_conf_header:
     PARALLEL_MAKE ?= "-j ${THREAD_COUNT} -l ${THREAD_COUNT}"
 
     '
-  os-release: |
-    META_QCOM_BUILD_ID = "34175365960"
+  os-release: 'META_QCOM_BUILD_ID = "34729757643"
+
     OS_RELEASE_FIELDS:append = "META_QCOM_BUILD_ID"
+
+    '
   coinor_license_qa: "ERROR_QA:remove = \"license-format\"\n\n    "
 distro: qcom-robotics-ros2-jazzy
 target: qcom-robotics-image
