@@ -1,15 +1,24 @@
 name: Monthly job
 
 on:
+  workflow_dispatch:
   schedule:
   - cron: "22 10 5 * *"   # montly job - at "random" time - top of hour can be busy in github
+
+permissions: {}
+
+env:
+  CACHE_DIR: /efsx/qli/meta-qcom-robotics-sdk
 
 jobs:
   sstate-cache-cleanup:
     if: github.repository_owner == 'qualcomm-linux'
-    runs-on: [self-hosted, qcom-u2404, amd64] 
+    runs-on: [self-hosted, qcom-sm-u2404, sm-amd64]
     timeout-minutes: 720
     steps:
-      - name: Clean up the persistant sstate-cache dir
+      - name: Expire unused files from the shared sstate-cache dir
         run: |
-          rm -rf $(find /efs/qli/meta-qcom-robotics-sdk -name 'sstate-cache-*' -maxdepth 1 -type d -ctime +30)
+          # bitbake refreshes the mtime of every sstate file a build uses, so
+          # a file older than 15 days was not used by any build in 15 days
+          find "${CACHE_DIR}/sstate-cache" -type f -mtime +15 -delete
+          find "${CACHE_DIR}/sstate-cache" -mindepth 1 -type d -empty -delete
