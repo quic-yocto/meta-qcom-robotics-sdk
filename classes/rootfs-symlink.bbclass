@@ -35,7 +35,7 @@ python do_rootfs_create_symlinks () {
     pairs = pairs.split()
 
     if not pairs:
-        bb.note("rootfs-symlink: ROS_SYMLINK_PAIRS not set, skip")
+        bb.note("rootfs-symlink: ROOTFS_SYMLINK_PAIRS not set, skip")
         return
 
     for p in pairs:
@@ -52,7 +52,7 @@ python do_rootfs_create_symlinks () {
         dest = dest.strip()
 
         if not src or not dest:
-            bb.warn(f"rootfs-symlink: empty SRC/DEST（'{p}', skip")
+            bb.warn(f"rootfs-symlink: empty SRC/DEST ('{p}'), skip")
             continue
 
         abs_dest = os.path.join(dvar, dest.lstrip('/'))
@@ -64,7 +64,7 @@ python do_rootfs_create_symlinks () {
             subprocess.check_call(['ln', '-snf', src, abs_dest])
             bb.note(f"rootfs-symlink: ln -snf {src} -> {abs_dest}")
         except subprocess.CalledProcessError as e:
-            bb.fatal(f"rootfs-symlink: create link fail : {src} -> {abs_dest}, error ：{e}")
+            bb.fatal(f"rootfs-symlink: create link fail: {src} -> {abs_dest}, error: {e}")
 }
 
 # Register the symlink creation task as a rootfs post-processing step so the

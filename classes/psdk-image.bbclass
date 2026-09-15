@@ -20,15 +20,14 @@
 #
 TOOLCHAIN_PATH = "${DEPLOY_DIR}/sdk"
 SDK_PN = "qirp-sdk"
-SDK_VERSION = "2.7.0"
-OSS_CHANNEL_FLAG = "${@bb.utils.contains_any('BBFILE_COLLECTIONS', 'qcom-robotics-extras', 'false', 'true', d)}"
+SDK_VERSION = "2.8.0"
 
 # Collect the standard SDK toolchain and copy it into the SDK's toolchain/
 # directory. If no matching toolchain is found, the task only emits a warning.
 # Function: process_toolchain
 process_toolchain() {
     bbnote "Processing toolchain..."
-    if ls ${TOOLCHAIN_PATH}/* | xargs -n1 basename | grep ${TOOLCHAIN_OUTPUTNAME} >/dev/null 2>&1; then
+    if find "${TOOLCHAIN_PATH}" -maxdepth 1 -name "${TOOLCHAIN_OUTPUTNAME}*" | grep -q .; then
         bbnote "Standard SDK Toolchain found in ${TOOLCHAIN_PATH}, copy to ${QIRP_SSTATE_IN_DIR}/${SDK_PN}/toolchain/"
         install -d ${QIRP_SSTATE_IN_DIR}/${SDK_PN}/toolchain
         find ${TOOLCHAIN_PATH} -type f -name "${TOOLCHAIN_OUTPUTNAME}*" -exec cp {} ${QIRP_SSTATE_IN_DIR}/${SDK_PN}/toolchain/ \;
@@ -75,7 +74,6 @@ process_qir_samples() {
         bbnote "  Processing sample: $name"
         bbnote "  Target directory: $to_dir"
         
-        # mkdir ${to_dir}
         install -d "${to_dir}"
         
         # Copy ${source_dir} to ${to_dir}
@@ -106,7 +104,7 @@ process_qir_samples() {
 
     # Process sample.json
     SAMPLE_JSON="${ROBIOTICS_LAYER_DIR}/recipes-sdk/files/samples.json"
-    if [ -n "$SAMPLE_JSON" ] && [ -f "$SAMPLE_JSON" ]; then
+    if [ -f "$SAMPLE_JSON" ]; then
         # Ensure target directory exists
         install -d ${QIRP_SSTATE_IN_DIR}/${SDK_PN}/qirp-samples/
         cp "$SAMPLE_JSON" ${QIRP_SSTATE_IN_DIR}/${SDK_PN}/qirp-samples/
@@ -140,20 +138,17 @@ process_runtime() {
         fi
     done
 
-    # Determine which packagegroup list files to read
-    PACKAGEGROUP_LIST_DIR="${DEPLOY_DIR}/packagegroup-lists"
-    
     if echo "${PN}" | grep -q proprietary; then
         # Proprietary image: three packagegroups
         LIST_FILES=" \
-            ${PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-opensource.list \
-            ${PACKAGEGROUP_LIST_DIR}/packagegroup-oss-with-prop-deps.list \
-            ${PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-proprietary.list \
+            ${ROBOTICS_PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-opensource.list \
+            ${ROBOTICS_PACKAGEGROUP_LIST_DIR}/packagegroup-oss-with-prop-deps.list \
+            ${ROBOTICS_PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-proprietary.list \
         "
         bbnote "Processing proprietary image with 3 packagegroup lists"
     else
         # Open-source image: one packagegroup
-        LIST_FILES="${PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-opensource.list"
+        LIST_FILES="${ROBOTICS_PACKAGEGROUP_LIST_DIR}/packagegroup-robotics-opensource.list"
         bbnote "Processing open-source image with 1 packagegroup list"
     fi
     
@@ -289,9 +284,15 @@ python () {
             pkg_groups = ["packagegroup-robotics-opensource"]
         
         # Add dependencies
+        
         for pkg_group in pkg_groups:
-            d.appendVarFlag('do_generate_qirp_sdk', 'depends', 
-                           ' {}:do_collect_rdepends'.format(pkg_group))
+            for task in ["do_generate_qirp_sdk", "do_populate_sdk", "do_populate_sdk_ext"]:
+                d.appendVarFlag(task, "depends",
+                                " {}:do_collect_rdepends".format(pkg_group))
+
+        # for pkg_group in pkg_groups:
+        #     d.appendVarFlag('do_generate_qirp_sdk', 'depends', 
+        #                    ' {}:do_collect_rdepends'.format(pkg_group))
         
         bb.note("Added dependencies for {}: {}".format(pn, ", ".join(pkg_groups)))
         

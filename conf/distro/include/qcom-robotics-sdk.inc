@@ -37,10 +37,16 @@ ROS_SDK_TARGET_PACKAGES:append = "${@bb.utils.contains('DISTRO_FEATURES', 'ros2-
 
 TOOLCHAIN_TARGET_TASK:remove = "qirp-sdk"
 
-# Avoid buildtools-tarball recipe packages the host *.armv8_2a.rpm for do_populate_sdk task
-TOOLCHAIN_TARGET_TASK:append = "${@(' ' + (d.getVar('ROS_SDK_TARGET_PACKAGES') or '')) if d.getVar('PN') != 'buildtools-tarball' else ''}"
-
+# Add default packages from meta-ros ros-sdk.inc
 TOOLCHAIN_HOST_TASK:append = "${@(' ' + (d.getVar('ROS_SDK_HOST_PACKAGES') or '')) if d.getVar('PN') != 'buildtools-tarball' else ''}"
+
+# NOTE: fmt-staticdev is intentionally NOT listed here. oe-core's fmt recipe
+# builds shared-only (-DBUILD_SHARED_LIBS=ON, kept for the spdlog ABI patch),
+# so fmt-staticdev is an empty package (no libfmt.a) and no RPM is generated
+# for it - do_populate_sdk then fails with "Unable to find a match:
+# fmt-staticdev". fmt headers and libfmt.so still reach the SDK via fmt-dev
+# pulled in by the ROS packages. octomap/osqp-vendor do ship static libs.
+TOOLCHAIN_TARGET_TASK:append = "${@(' ' + (d.getVar('ROS_SDK_TARGET_PACKAGES') or '') + ' sed octomap-staticdev osqp-vendor-staticdev') if d.getVar('PN') != 'buildtools-tarball' else ''}"
 
 # esdk fix for populate_sdk_ext:
 # 1. BB_SETSCENE_ENFORCE_IGNORE_TASKS: The inner eSDK build uses %:* to allow
