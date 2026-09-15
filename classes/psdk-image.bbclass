@@ -20,7 +20,7 @@
 #
 TOOLCHAIN_PATH = "${DEPLOY_DIR}/sdk"
 SDK_PN = "qirp-sdk"
-SDK_VERSION = "2.7.0"
+SDK_VERSION = "2.8.0"
 
 # Collect the standard SDK toolchain and copy it into the SDK's toolchain/
 # directory. If no matching toolchain is found, the task only emits a warning.
