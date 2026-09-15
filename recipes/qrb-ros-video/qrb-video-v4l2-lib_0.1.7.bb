@@ -13,7 +13,7 @@ DEPENDS = "glog gflags"
 
 SRC_URI = "git://github.com/quic-qrb-ros/qrb_ros_video.git;protocol=https;branch=stable/0.1.7"
 
-SRCREV = "706839334db5247bcb3aee240c46c74b146ba0af"
+SRCREV = "4cf038f0dec6154ae464c904cf7e7f24b125be7b"
 S = "${UNPACKDIR}/${BP}/qrb_video_v4l2_lib"
 
 EXTRA_OECMAKE:append = " -DBUILD_TESTING=OFF"
